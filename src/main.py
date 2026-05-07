@@ -14,9 +14,11 @@ def run_pipeline(
     output_path: str | Path,
     model_name: str = "base",
     language: str | None = None,
-    batch_size: int = 16,
+    batch_size: int | None = None,
     input_url: str | None = None,
     download_path: str | Path = "data/input/lecture.mp4",
+    device: str = "auto",
+    compute_type: str | None = None,
 ) -> Path:
     if input_url:
         video_path = download_video(input_url, download_path)
@@ -30,6 +32,8 @@ def run_pipeline(
         model_name=model_name,
         language=language,
         batch_size=batch_size,
+        device=device,
+        compute_type=compute_type,
     )
     return save_result(result, output_path)
 
@@ -76,8 +80,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=16,
-        help="Transcription batch size.",
+        default=None,
+        help="Transcription batch size. Defaults to 16 on CUDA and 4 on CPU.",
+    )
+    parser.add_argument(
+        "--device",
+        choices=["auto", "cuda", "cpu"],
+        default="auto",
+        help="Execution device. Use cpu to force CPU-only testing.",
+    )
+    parser.add_argument(
+        "--compute-type",
+        default=None,
+        help="Optional WhisperX compute type override.",
     )
     return parser
 
@@ -97,5 +112,7 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         input_url=args.input_url,
         download_path=args.download_output,
+        device=args.device,
+        compute_type=args.compute_type,
     )
     print(f"Pipeline completed: {output}")

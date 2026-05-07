@@ -6,6 +6,7 @@
 
 1. 로컬 영상 파일 입력
 2. 강의 영상 URL 입력
+3. CPU 강제 테스트 실행
 
 핵심 목표는 같습니다.
 
@@ -67,6 +68,7 @@ python -c "import torch; print(torch.cuda.is_available())"
 ```
 
 `True`가 나오면 GPU 사용 준비가 된 상태입니다.
+`False`여도 CPU 테스트는 가능합니다.
 
 ## 필수 설치
 
@@ -114,6 +116,21 @@ python src/main.py --input-url "https://www.youtube.com/watch?v=example" --downl
 4. WhisperX 전사
 5. `data/output/transcript.json` 저장
 
+### 방법 3. CPU에서 바로 테스트
+
+GPU가 없어도 먼저 파이프라인 검증은 할 수 있습니다.
+
+```powershell
+python src/main.py --input-url "https://www.youtube.com/watch?v=example" --download-output data/input/lecture.mp4 --audio-output data/audio/lecture.wav --json-output data/output/transcript.json --model tiny --language ko --device cpu
+```
+
+CPU 테스트 팁:
+
+1. 먼저 `--model tiny` 또는 `--model base`로 시작하는 것이 안전합니다.
+2. 기본 배치 크기는 CPU에서 자동으로 `4`가 적용됩니다.
+3. 더 무거우면 `--batch-size 2`로 낮출 수 있습니다.
+4. CPU에서는 속도가 많이 느릴 수 있습니다.
+
 ## 개별 실행 방법
 
 ### URL에서 영상만 먼저 다운로드
@@ -132,6 +149,12 @@ python src/extract_audio.py --input data/input/lecture.mp4 --output data/audio/l
 
 ```powershell
 python src/transcribe.py --input data/audio/lecture.wav --output data/output/transcript.json --model base --language ko
+```
+
+CPU로 전사만 따로 확인하려면:
+
+```powershell
+python src/transcribe.py --input data/audio/lecture.wav --output data/output/transcript.json --model tiny --language ko --device cpu
 ```
 
 ## 출력 결과

@@ -8,18 +8,39 @@ import torch
 import whisperx
 
 
+def resolve_device(device: str) -> str:
+    if device == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    return device
+
+
+def resolve_compute_type(device: str, compute_type: str | None) -> str:
+    if compute_type:
+        return compute_type
+    return "float16" if device == "cuda" else "int8"
+
+
+def resolve_batch_size(device: str, batch_size: int | None) -> int:
+    if batch_size is not None:
+        return batch_size
+    return 16 if device == "cuda" else 4
+
+
 def transcribe(
     audio_path: str | Path,
     model_name: str = "base",
     language: str | None = None,
-    batch_size: int = 16,
+    batch_size: int | None = None,
+    device: str = "auto",
+    compute_type: str | None = None,
 ) -> dict:
     audio_path = Path(audio_path)
     if not audio_path.exists():
         raise FileNotFoundError(f"Input audio not found: {audio_path}")
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    compute_type = "float16" if device == "cuda" else "int8"
+    device = resolve_device(device)
+    compute_type = resolve_compute_type(device, compute_type)
+    batch_size = resolve_batch_size(device, batch_size)
 
     model = whisperx.load_model(
         model_name,
@@ -89,8 +110,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=16,
-        help="Transcription batch size. Lower this if you run out of GPU memory.",
+        default=None,
+        help="Transcription batch size. Defaults to 16 on CUDA and 4 on CPU.",
+    )
+    parser.add_argument(
+        "--device",
+        choices=["auto", "cuda", "cpu"],
+        default="auto",
+        help="Execution device. Use cpu to force CPU-only testing.",
+    )
+    parser.add_argument(
+        "--compute-type",
+        default=None,
+        help="Optional WhisperX compute type. Defaults to float16 on CUDA and int8 on CPU.",
     )
     return parser
 
@@ -102,6 +134,8 @@ if __name__ == "__main__":
         model_name=args.model,
         language=args.language,
         batch_size=args.batch_size,
+        device=args.device,
+        compute_type=args.compute_type,
     )
     output = save_result(result, args.output)
 
