@@ -6,6 +6,22 @@ import subprocess
 from pathlib import Path
 
 
+def resolve_ffmpeg_binary() -> str:
+    ffmpeg_bin = shutil.which("ffmpeg")
+    if ffmpeg_bin:
+        return ffmpeg_bin
+
+    try:
+        import imageio_ffmpeg
+    except ImportError as exc:
+        raise FileNotFoundError(
+            "ffmpeg executable was not found in PATH, and imageio-ffmpeg is not installed. "
+            "Install FFmpeg system-wide or add imageio-ffmpeg to the Python environment."
+        ) from exc
+
+    return imageio_ffmpeg.get_ffmpeg_exe()
+
+
 def extract_audio(video_path: str | Path, output_path: str | Path) -> Path:
     video_path = Path(video_path)
     output_path = Path(output_path)
@@ -13,12 +29,7 @@ def extract_audio(video_path: str | Path, output_path: str | Path) -> Path:
     if not video_path.exists():
         raise FileNotFoundError(f"Input video not found: {video_path}")
 
-    ffmpeg_bin = shutil.which("ffmpeg")
-    if ffmpeg_bin is None:
-        raise FileNotFoundError(
-            "ffmpeg executable was not found in PATH. Install FFmpeg and make sure "
-            "the `ffmpeg` command is available in your terminal."
-        )
+    ffmpeg_bin = resolve_ffmpeg_binary()
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 

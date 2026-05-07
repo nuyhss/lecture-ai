@@ -1,11 +1,75 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
+import subprocess
 from pathlib import Path
 
+import numpy as np
 import torch
+import torchaudio
+
+from extract_audio import resolve_ffmpeg_binary
+from transcript_postprocess import normalize_transcript_schema, validate_transcript_json
+
+
+if not hasattr(torchaudio, "AudioMetaData"):
+    class AudioMetaData:
+        pass
+
+    torchaudio.AudioMetaData = AudioMetaData
+
+if not hasattr(torchaudio, "list_audio_backends"):
+    def list_audio_backends() -> list[str]:
+        return ["ffmpeg"]
+
+    torchaudio.list_audio_backends = list_audio_backends
+
+if not hasattr(torchaudio, "get_audio_backend"):
+    def get_audio_backend() -> str:
+        return "ffmpeg"
+
+    torchaudio.get_audio_backend = get_audio_backend
+
+if not hasattr(torchaudio, "set_audio_backend"):
+    def set_audio_backend(_backend: str) -> None:
+        return None
+
+    torchaudio.set_audio_backend = set_audio_backend
+
 import whisperx
+
+
+def load_audio_with_resolved_ffmpeg(file: str, sr: int = 16000) -> np.ndarray:
+    cmd = [
+        resolve_ffmpeg_binary(),
+        "-nostdin",
+        "-threads",
+        "0",
+        "-i",
+        file,
+        "-f",
+        "s16le",
+        "-ac",
+        "1",
+        "-acodec",
+        "pcm_s16le",
+        "-ar",
+        str(sr),
+        "-",
+    ]
+    try:
+        out = subprocess.run(cmd, capture_output=True, check=True).stdout
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"Failed to load audio: {exc.stderr.decode()}") from exc
+
+    return np.frombuffer(out, np.int16).flatten().astype(np.float32) / 32768.0
+
+
+whisperx_audio = importlib.import_module("whisperx.audio")
+whisperx_audio.load_audio = load_audio_with_resolved_ffmpeg
+whisperx.load_audio = load_audio_with_resolved_ffmpeg
 
 
 def resolve_device(device: str) -> str:
@@ -26,6 +90,79 @@ def resolve_batch_size(device: str, batch_size: int | None) -> int:
     return 16 if device == "cuda" else 4
 
 
+def load_model(model_name: str, device: str, compute_type: str):
+    return whisperx.load_model(
+        model_name,
+        device=device,
+        compute_type=compute_type,
+        vad_method="silero",
+    )
+
+
+def run_whisper(
+    model,
+    audio_path: str | Path,
+    batch_size: int,
+    language: str | None,
+) -> dict:
+    audio = whisperx.load_audio(str(audio_path))
+    transcribe_kwargs = {"batch_size": batch_size}
+    if language:
+        transcribe_kwargs["language"] = language
+    return model.transcribe(audio, **transcribe_kwargs)
+
+
+def transcribe_to_raw_result(
+    audio_path: str | Path,
+    model_name: str,
+    language: str | None,
+    batch_size: int,
+    device: str,
+    compute_type: str,
+) -> dict:
+    model = load_model(model_name, device, compute_type)
+    return run_whisper(model, audio_path, batch_size, language)
+
+
+def align_timestamps(
+    raw_result: dict,
+    audio_path: str | Path,
+    device: str,
+    language: str | None,
+) -> dict:
+    detected_language = raw_result.get("language") or language
+    if not detected_language:
+        return raw_result
+
+    audio = whisperx.load_audio(str(audio_path))
+    align_model, align_metadata = whisperx.load_align_model(
+        language_code=detected_language,
+        device=device,
+    )
+    aligned_result = whisperx.align(
+        raw_result["segments"],
+        align_model,
+        align_metadata,
+        audio,
+        device,
+        return_char_alignments=False,
+    )
+    aligned_result["language"] = detected_language
+    return aligned_result
+
+
+def process_raw_result(
+    raw_result: dict,
+    audio_path: str | Path,
+    device: str,
+    language: str | None,
+) -> dict:
+    aligned_result = align_timestamps(raw_result, audio_path, device, language)
+    result = normalize_transcript_schema(aligned_result)
+    validate_transcript_json(result)
+    return result
+
+
 def transcribe(
     audio_path: str | Path,
     model_name: str = "base",
@@ -42,37 +179,15 @@ def transcribe(
     compute_type = resolve_compute_type(device, compute_type)
     batch_size = resolve_batch_size(device, batch_size)
 
-    model = whisperx.load_model(
-        model_name,
+    raw_result = transcribe_to_raw_result(
+        audio_path=audio_path,
+        model_name=model_name,
+        language=language,
+        batch_size=batch_size,
         device=device,
         compute_type=compute_type,
     )
-
-    audio = whisperx.load_audio(str(audio_path))
-
-    transcribe_kwargs = {"batch_size": batch_size}
-    if language:
-        transcribe_kwargs["language"] = language
-
-    result = model.transcribe(audio, **transcribe_kwargs)
-    detected_language = result.get("language") or language
-
-    if detected_language:
-        align_model, align_metadata = whisperx.load_align_model(
-            language_code=detected_language,
-            device=device,
-        )
-        result = whisperx.align(
-            result["segments"],
-            align_model,
-            align_metadata,
-            audio,
-            device,
-            return_char_alignments=False,
-        )
-        result["language"] = detected_language
-
-    return result
+    return process_raw_result(raw_result, audio_path, device, language)
 
 
 def save_result(result: dict, output_path: str | Path) -> Path:

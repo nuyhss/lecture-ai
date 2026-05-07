@@ -6,6 +6,15 @@ from pathlib import Path
 from yt_dlp import YoutubeDL
 
 
+def resolve_ffmpeg_location() -> str | None:
+    try:
+        import imageio_ffmpeg
+    except ImportError:
+        return None
+
+    return imageio_ffmpeg.get_ffmpeg_exe()
+
+
 def download_video(url: str, output_path: str | Path) -> Path:
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -18,6 +27,9 @@ def download_video(url: str, output_path: str | Path) -> Path:
         "noplaylist": True,
         "quiet": False,
     }
+    ffmpeg_location = resolve_ffmpeg_location()
+    if ffmpeg_location:
+        options["ffmpeg_location"] = ffmpeg_location
 
     with YoutubeDL(options) as downloader:
         downloader.extract_info(url, download=True)

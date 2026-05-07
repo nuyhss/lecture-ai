@@ -1,3 +1,4 @@
 whisperx
 ffmpeg-python
 yt-dlp
+imageio-ffmpeg

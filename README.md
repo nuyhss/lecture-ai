@@ -74,7 +74,8 @@ python -c "import torch; print(torch.cuda.is_available())"
 
 ### FFmpeg
 
-이 프로젝트는 `ffmpeg` 실행 파일이 시스템 PATH에 있어야 합니다.
+이 프로젝트는 먼저 시스템 PATH의 `ffmpeg`를 사용하고, 없으면 `imageio-ffmpeg`로 설치된 번들 실행 파일을 자동으로 찾습니다.
+가능하면 시스템 `ffmpeg`를 설치해 두는 것을 권장하지만, 현재 `requirements.txt`에는 fallback용 `imageio-ffmpeg`도 포함되어 있습니다.
 
 ```powershell
 ffmpeg -version
@@ -172,6 +173,7 @@ data/output/transcript.json
 ```
 
 JSON에는 `segments`가 포함되고, alignment가 성공하면 `words` 단위 timestamp도 들어갑니다.
+후처리 단계에서 반복 쉼표 같은 punctuation noise와 punctuation-only segment는 제거합니다.
 
 예시 구조:
 
