@@ -1,2 +1,3 @@
 whisperx
 ffmpeg-python
+yt-dlp

@@ -3,18 +3,27 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from download_video import download_video
 from extract_audio import extract_audio
 from transcribe import save_result, transcribe
 
 
 def run_pipeline(
-    video_path: str | Path,
+    video_path: str | Path | None,
     audio_path: str | Path,
     output_path: str | Path,
     model_name: str = "base",
     language: str | None = None,
     batch_size: int = 16,
+    input_url: str | None = None,
+    download_path: str | Path = "data/input/lecture.mp4",
 ) -> Path:
+    if input_url:
+        video_path = download_video(input_url, download_path)
+
+    if video_path is None:
+        raise ValueError("Either video_path or input_url must be provided.")
+
     extract_audio(video_path, audio_path)
     result = transcribe(
         audio_path=audio_path,
@@ -31,8 +40,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--input",
+        default=None,
+        help="Path to the local lecture video file.",
+    )
+    parser.add_argument(
+        "--input-url",
+        default=None,
+        help="Lecture video URL to download before transcription.",
+    )
+    parser.add_argument(
+        "--download-output",
         default="data/input/lecture.mp4",
-        help="Path to the input lecture video.",
+        help="Path to save the downloaded video when --input-url is used.",
     )
     parser.add_argument(
         "--audio-output",
@@ -65,12 +84,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 if __name__ == "__main__":
     args = build_parser().parse_args()
+    video_input = args.input
+    if video_input is None and args.input_url is None:
+        video_input = "data/input/lecture.mp4"
+
     output = run_pipeline(
-        video_path=args.input,
+        video_path=video_input,
         audio_path=args.audio_output,
         output_path=args.json_output,
         model_name=args.model,
         language=args.language,
         batch_size=args.batch_size,
+        input_url=args.input_url,
+        download_path=args.download_output,
     )
     print(f"Pipeline completed: {output}")
