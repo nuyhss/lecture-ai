@@ -1,0 +1,13 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+data/input/*
+data/audio/*
+data/output/*
+!data/input/.gitkeep
+!data/audio/.gitkeep
+!data/output/.gitkeep
